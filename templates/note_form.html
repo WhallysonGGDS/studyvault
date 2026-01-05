@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Nota — StudyVault{% endblock %}
+
+{% block content %}
+<div class="card wide">
+  <div class="row space">
+    <div>
+      <h1>{% if mode == "new" %}Nova nota{% else %}Editar nota{% endif %}</h1>
+      <p class="muted">Tópico: <b>{{ topic.name }}</b></p>
+    </div>
+    {% if note %}
+      <a class="btn ghost" href="{{ url_for('note_view', note_id=note.id) }}">Ver</a>
+    {% endif %}
+  </div>
+
+  <form method="post" enctype="multipart/form-data"
+        action="{% if mode == 'new' %}{{ url_for('note_new_post', topic_id=topic.id) }}{% else %}{{ url_for('note_edit_post', note_id=note.id) }}{% endif %}">
+    <label>Título</label>
+    <input type="text" name="title" required value="{{ note.title if note else '' }}" placeholder="Ex: INNER JOIN, Probabilidade, Pandas...">
+
+    <label>Tags (separa por vírgula)</label>
+    <input type="text" name="tags"
+           value="{{ note.tags if note else '' }}"
+           placeholder="Ex: sql, join, analytics">
+
+    <label>Conteúdo (Markdown)</label>
+    <textarea name="content" rows="14" placeholder="Escreve aqui...">{{ note.content if note else '' }}</textarea>
+
+    <label>Imagens (pode selecionar várias)</label>
+    <input type="file" name="images" accept="image/*" multiple>
+
+    <div class="row">
+      <button class="btn primary" type="submit">Salvar</button>
+      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=topic.id) }}">Voltar</a>
+    </div>
+  </form>
+
+  {% if images and mode == "edit" %}
+    <hr class="sep">
+    <h2>Anexos</h2>
+    <div class="images">
+      {% for img in images %}
+        <div class="img-card">
+          <img src="{{ url_for('uploaded_file', filename=img.file_name) }}" alt="anexo">
+          <form method="post" action="{{ url_for('image_delete', image_id=img.id) }}"
+                onsubmit="return confirm('Remover imagem?');">
+            <button class="btn danger small" type="submit">Remover</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

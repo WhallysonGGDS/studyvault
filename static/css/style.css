@@ -1,0 +1,230 @@
+:root{
+  --bg:#0b0f14;
+  --panel:#0f1620;
+  --panel2:#0d131c;
+  --text:#e8eef6;
+  --muted:#91a0b5;
+  --line:#1c2a3b;
+  --accent:#00ff88;
+  --danger:#ff4d4d;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius: 16px;
+}
+
+*{ box-sizing:border-box; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: radial-gradient(1200px 500px at 10% -10%, rgba(0,255,136,.10), transparent 60%),
+              radial-gradient(900px 400px at 110% 10%, rgba(0,255,136,.07), transparent 60%),
+              var(--bg);
+  color:var(--text);
+}
+
+a{ color:inherit; text-decoration:none; }
+.container{ max-width:1100px; margin:0 auto; padding:24px; }
+
+.topbar{
+  position:sticky; top:0; z-index:10;
+  display:flex; justify-content:space-between; align-items:center;
+  padding:14px 24px;
+  border-bottom:1px solid var(--line);
+  background: rgba(11,15,20,.75);
+  backdrop-filter: blur(10px);
+}
+.brand a{ font-weight:800; letter-spacing:.2px; }
+.tag{ margin-left:10px; color:var(--muted); font-size:12px; }
+.actions{ display:flex; gap:12px; align-items:center; }
+
+.footer{
+  padding:24px;
+  border-top:1px solid var(--line);
+  text-align:center;
+  color:var(--muted);
+}
+
+.btn{
+  border:1px solid var(--line);
+  padding:10px 14px;
+  border-radius:12px;
+  background: var(--panel);
+  cursor:pointer;
+  transition: transform .05s ease, border-color .2s ease;
+  display:inline-flex; gap:8px; align-items:center;
+}
+.btn:hover{ border-color: rgba(0,255,136,.5); }
+.btn:active{ transform: translateY(1px); }
+
+.btn.primary{
+  background: linear-gradient(180deg, rgba(0,255,136,.22), rgba(0,255,136,.08));
+  border-color: rgba(0,255,136,.5);
+}
+.btn.ghost{ background: transparent; }
+.btn.danger{
+  background: rgba(255,77,77,.10);
+  border-color: rgba(255,77,77,.35);
+}
+.btn.small{ padding:7px 10px; border-radius:10px; font-size:12px; }
+
+.card{
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  border:1px solid var(--line);
+  border-radius: var(--radius);
+  padding:18px;
+  box-shadow: var(--shadow);
+}
+.card.wide{ max-width:900px; margin:0 auto; }
+
+label{ display:block; margin-top:14px; margin-bottom:8px; color:var(--muted); font-size:13px; }
+
+input, textarea{
+  width:100%;
+  border:1px solid var(--line);
+  background: var(--panel2);
+  color:var(--text);
+  padding:12px 12px;
+  border-radius: 12px;
+  outline:none;
+}
+textarea{ resize: vertical; }
+input:focus, textarea:focus{ border-color: rgba(0,255,136,.6); }
+
+.row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.row.space{ justify-content:space-between; }
+
+.muted{ color: var(--muted); }
+.empty{ padding:16px; border:1px dashed rgba(145,160,181,.35); border-radius:14px; }
+
+.grid{ display:grid; grid-template-columns: 320px 1fr; gap:18px; }
+@media (max-width: 900px){
+  .grid{ grid-template-columns:1fr; }
+}
+
+.sidebar{
+  border:1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(15,22,32,.45);
+  box-shadow: var(--shadow);
+  overflow:hidden;
+}
+.sidebar-head{
+  padding:16px;
+  display:flex; justify-content:space-between; align-items:center;
+  border-bottom:1px solid var(--line);
+}
+.sidebar-head h2{ margin:0; font-size:16px; }
+
+.topics{ padding:10px; display:flex; flex-direction:column; gap:8px; }
+.topic{
+  padding:12px 12px;
+  border:1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(13,19,28,.65);
+  transition: border-color .2s ease, transform .05s ease;
+}
+.topic:hover{ border-color: rgba(0,255,136,.5); }
+.topic.active{
+  border-color: rgba(0,255,136,.65);
+  background: rgba(0,255,136,.08);
+}
+.topic-name{ font-weight:700; }
+.topic-meta{ margin-top:4px; font-size:12px; color: var(--muted); }
+
+.main-head{
+  display:flex; justify-content:space-between; align-items:flex-start;
+  gap:12px; flex-wrap:wrap;
+  margin-bottom: 12px;
+}
+.main-head h1{ margin:0; font-size:22px; }
+
+.search{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin: 10px 0 16px;
+}
+.search input{
+  flex: 1;
+  min-width: 220px;
+}
+
+.notes{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+.note-card{
+  padding:14px;
+  border-radius: 16px;
+  border:1px solid var(--line);
+  background: rgba(13,19,28,.65);
+}
+.note-card:hover{ border-color: rgba(0,255,136,.45); }
+.note-title{ font-weight:800; margin-bottom:6px; }
+.note-meta{ font-size:12px; }
+
+.sep{ border:0; border-top:1px solid var(--line); margin:18px 0; }
+
+.toasts{ display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+.toast{
+  padding:12px 14px; border-radius: 14px;
+  border:1px solid var(--line);
+  background: rgba(15,22,32,.75);
+}
+.toast.success{ border-color: rgba(0,255,136,.35); }
+.toast.error{ border-color: rgba(255,77,77,.35); }
+
+.auth{ display:flex; justify-content:center; padding:40px 0; }
+.auth .card{ width:420px; max-width: 100%; }
+.auth h1{ margin:0 0 6px; }
+.auth-links{ margin-top:14px; display:flex; gap:8px; align-items:center; }
+
+.images{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap:10px;
+}
+.img-card{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  background: rgba(13,19,28,.65);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.img-card img{
+  width:100%;
+  height:160px;
+  object-fit:cover;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.06);
+}
+
+.tags{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.pill{
+  font-size:12px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(0,255,136,.35);
+  background: rgba(0,255,136,.08);
+  color: var(--text);
+}
+.pill:hover{ border-color: rgba(0,255,136,.7); }
+
+.markdown{
+  line-height:1.7;
+}
+.markdown pre{
+  overflow:auto;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background: rgba(13,19,28,.8);
+}
+.markdown code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.markdown h1, .markdown h2, .markdown h3{ margin-top: 18px; }
+.markdown a{ color: var(--accent); }

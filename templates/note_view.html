@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title }} — StudyVault{% endblock %}
+
+{% block content %}
+<div class="card wide">
+  <div class="row space">
+    <div>
+      <h1>{{ note.title }}</h1>
+      <p class="muted">
+        Tópico: <b>{{ note.topic_name }}</b> ·
+        {% if note.updated_at %}Atualizada{% else %}Criada{% endif %}
+        em {{ (note.updated_at or note.created_at)[:19].replace("T"," ") }} UTC
+      </p>
+
+      {% if note.tags %}
+        <div class="tags">
+          {% for tg in note.tags.split(",") %}
+            {% set tgs = tg.strip() %}
+            {% if tgs %}
+              <a class="pill" href="{{ url_for('dashboard', topic_id=note.topic_id, q='tag:' ~ tgs) }}">{{ tgs }}</a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="row">
+      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=note.topic_id) }}">Voltar</a>
+      <a class="btn" href="{{ url_for('note_edit', note_id=note.id) }}">Editar</a>
+      <form method="post" action="{{ url_for('note_delete', note_id=note.id) }}"
+            onsubmit="return confirm('Deletar nota?');">
+        <button class="btn danger" type="submit">Deletar</button>
+      </form>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <div class="markdown">
+    {{ rendered|safe }}
+  </div>
+
+  {% if images %}
+    <hr class="sep">
+    <h2>Anexos</h2>
+    <div class="images">
+      {% for img in images %}
+        <a class="img-card" href="{{ url_for('uploaded_file', filename=img.file_name) }}" target="_blank" rel="noopener">
+          <img src="{{ url_for('uploaded_file', filename=img.file_name) }}" alt="anexo">
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

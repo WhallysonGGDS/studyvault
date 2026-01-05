@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — StudyVault{% endblock %}
+
+{% block content %}
+<div class="grid">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <h2>Tópicos</h2>
+      <a class="btn small" href="{{ url_for('topic_new') }}">+ Novo</a>
+    </div>
+
+    <div class="topics">
+      {% for t in topics %}
+        <a class="topic {% if topic_selected and topic_selected.id == t.id %}active{% endif %}"
+           href="{{ url_for('dashboard', topic_id=t.id) }}">
+          <div class="topic-name">{{ t.name }}</div>
+          <div class="topic-meta">{{ t.notes_count }} notas</div>
+        </a>
+      {% else %}
+        <div class="empty muted">Cria seu primeiro tópico ali em cima 👆</div>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <section class="main">
+    {% if topic_selected %}
+      <div class="main-head">
+        <div>
+          <h1>{{ topic_selected.name }}</h1>
+          <p class="muted">Seleciona uma nota ou cria uma nova.</p>
+        </div>
+        <div class="row">
+          <a class="btn" href="{{ url_for('note_new', topic_id=topic_selected.id) }}">+ Nova nota</a>
+          <a class="btn ghost" href="{{ url_for('topic_edit', topic_id=topic_selected.id) }}">Editar tópico</a>
+          <form method="post" action="{{ url_for('topic_delete', topic_id=topic_selected.id) }}"
+                onsubmit="return confirm('Deletar tópico e tudo dentro?');">
+            <button class="btn danger" type="submit">Deletar</button>
+          </form>
+        </div>
+      </div>
+
+      <form class="search" method="get" action="{{ url_for('dashboard') }}">
+        <input type="hidden" name="topic_id" value="{{ topic_selected.id }}">
+        <input type="text" name="q" value="{{ request.args.get('q','') }}"
+               placeholder="Buscar por título, conteúdo ou tag... (ex: tag:sql)">
+        <button class="btn small" type="submit">Buscar</button>
+        {% if request.args.get('q') %}
+          <a class="btn small ghost" href="{{ url_for('dashboard', topic_id=topic_selected.id) }}">Limpar</a>
+        {% endif %}
+      </form>
+
+      <div class="notes">
+        {% for n in notes %}
+          <a class="note-card" href="{{ url_for('note_view', note_id=n.id) }}">
+            <div class="note-title">{{ n.title }}</div>
+
+            {% if n.tags %}
+              <div class="tags">
+                {% for tg in n.tags.split(",") %}
+                  {% set tgs = tg.strip() %}
+                  {% if tgs %}
+                    <a class="pill" href="{{ url_for('dashboard', topic_id=topic_selected.id, q='tag:' ~ tgs) }}">{{ tgs }}</a>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+
+            <div class="note-meta muted">
+              {% if n.updated_at %}Atualizada{% else %}Criada{% endif %}
+              em {{ (n.updated_at or n.created_at)[:19].replace("T"," ") }} UTC
+            </div>
+          </a>
+        {% else %}
+          <div class="empty muted">Nenhuma nota aqui ainda. Mete a primeira 😎</div>
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <div class="card">
+        <h1>Bem-vindo ao StudyVault</h1>
+        <p class="muted">
+          Escolhe um tópico na esquerda. Se não tiver, cria.
+          Seu cérebro vai agradecer.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

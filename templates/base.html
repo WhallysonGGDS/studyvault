@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}StudyVault{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="{{ url_for('dashboard') }}">StudyVault</a>
+      <span class="tag">bloco de notas de estudo</span>
+    </div>
+
+    <div class="actions">
+      {% if session.get("user_id") %}
+        <span class="muted">{{ session.get("email") }}</span>
+        <a class="btn ghost" href="{{ url_for('logout') }}">Sair</a>
+      {% else %}
+        <a class="btn ghost" href="{{ url_for('login') }}">Entrar</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="toasts">
+          {% for category, message in messages %}
+            <div class="toast {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span class="muted">StudyVault — feito com Flask + SQLite</span>
+  </footer>
+</body>
+</html>

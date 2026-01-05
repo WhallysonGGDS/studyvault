@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Tópico — StudyVault{% endblock %}
+
+{% block content %}
+<div class="card wide">
+  <h1>{% if mode == "new" %}Novo tópico{% else %}Editar tópico{% endif %}</h1>
+
+  <form method="post"
+        action="{% if mode == 'new' %}{{ url_for('topic_new_post') }}{% else %}{{ url_for('topic_edit_post', topic_id=topic.id) }}{% endif %}">
+    <label>Nome do tópico</label>
+    <input type="text" name="name" required value="{{ topic.name if topic else '' }}" placeholder="Ex: SQL, Estatística, Python...">
+
+    <div class="row">
+      <button class="btn primary" type="submit">Salvar</button>
+      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=topic.id) if topic else url_for('dashboard') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
