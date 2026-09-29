@@ -29,6 +29,7 @@
       <a class="btn" href="{{ url_for('note_edit', note_id=note.id) }}">Editar</a>
       <form method="post" action="{{ url_for('note_delete', note_id=note.id) }}"
             onsubmit="return confirm('Deletar nota?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <button class="btn danger" type="submit">Deletar</button>
       </form>
     </div>
@@ -45,8 +46,8 @@
     <h2>Anexos</h2>
     <div class="images">
       {% for img in images %}
-        <a class="img-card" href="{{ url_for('uploaded_file', filename=img.file_name) }}" target="_blank" rel="noopener">
-          <img src="{{ url_for('uploaded_file', filename=img.file_name) }}" alt="anexo">
+        <a class="img-card" href="{{ url_for('image_file', image_id=img.id) }}" target="_blank" rel="noopener">
+          <img src="{{ url_for('image_file', image_id=img.id) }}" alt="anexo">
         </a>
       {% endfor %}
     </div>

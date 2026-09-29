@@ -8,6 +8,7 @@
     <p class="muted">Cofre novo, mente nova. Bora.</p>
 
     <form method="post" action="{{ url_for('register_post') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label>Email</label>
       <input type="email" name="email" required placeholder="voce@email.com">
 

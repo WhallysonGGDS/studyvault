@@ -16,7 +16,10 @@
     <div class="actions">
       {% if session.get("user_id") %}
         <span class="muted">{{ session.get("email") }}</span>
-        <a class="btn ghost" href="{{ url_for('logout') }}">Sair</a>
+        <form method="post" action="{{ url_for('logout') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="btn ghost" type="submit">Sair</button>
+        </form>
       {% else %}
         <a class="btn ghost" href="{{ url_for('login') }}">Entrar</a>
       {% endif %}

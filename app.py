@@ -1,48 +1,121 @@
 import os
 import re
-import sqlite3
-from datetime import datetime
+import secrets
+from datetime import datetime, timezone
 from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, g, abort, send_from_directory
+    session, flash, g, abort
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import markdown as md
+import nh3
+
+import db as database
+from storage import make_storage
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
-UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+UPLOAD_DIR = os.path.join(INSTANCE_DIR, "uploads")
+DB_PATH = os.path.join(INSTANCE_DIR, "studyvault.db")
 
 os.makedirs(INSTANCE_DIR, exist_ok=True)
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-DB_PATH = os.path.join(INSTANCE_DIR, "studyvault.db")
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 MAX_CONTENT_LENGTH = 8 * 1024 * 1024  # 8MB
 
+IS_PRODUCTION = bool(os.environ.get("RENDER")) or os.environ.get("APP_ENV") == "production"
+
+# Markdown -> HTML sanitizado: mantém o que o Markdown gera, remove scripts,
+# handlers (onclick...) e URLs perigosas (javascript:).
+MD_EXTENSIONS = ["fenced_code", "codehilite", "tables", "nl2br", "sane_lists"]
+MD_EXTENSION_CONFIGS = {"codehilite": {"guess_lang": False}}
+MD_ATTRIBUTES = {
+    **nh3.ALLOWED_ATTRIBUTES,
+    "span": {"class"},
+    "div": {"class"},
+    "pre": {"class"},
+    "code": {"class"},
+    "th": {"align", "style"},
+    "td": {"align", "style"},
+}
+
+
+def utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def normalize_tags(raw: str) -> str:
+    seen = []
+    for t in (raw or "").split(","):
+        t = " ".join(t.strip().lower().split())
+        if t and t not in seen:
+            seen.append(t)
+    return ", ".join(seen)
+
 
 def create_app():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
-    app.config["DATABASE"] = DB_PATH
-    app.config["UPLOAD_FOLDER"] = UPLOAD_DIR
-    app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+
+    secret = os.environ.get("SECRET_KEY")
+    if not secret:
+        if IS_PRODUCTION:
+            raise RuntimeError(
+                "SECRET_KEY não definida. Configure a variável de ambiente no Render "
+                "(ex: python -c \"import secrets; print(secrets.token_hex(32))\")."
+            )
+        secret = "dev-only-insecure-key"
+
+    app.config.update(
+        SECRET_KEY=secret,
+        MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=IS_PRODUCTION,
+    )
+    if IS_PRODUCTION:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    storage = make_storage(UPLOAD_DIR)
+
+    # Schema criado uma vez, na subida do app — não a cada request.
+    conn = database.connect(DB_PATH)
+    try:
+        database.init_db(conn)
+    finally:
+        conn.close()
 
     @app.before_request
     def before_request():
-        g.db = get_db(app)
-        init_db(g.db)
+        if request.method == "POST":
+            token = session.get("_csrf")
+            sent = request.form.get("_csrf", "")
+            if not token or not secrets.compare_digest(token, sent):
+                abort(400, "Formulário expirou. Recarregue a página e tente de novo.")
+        g.db = database.connect(DB_PATH)
 
     @app.teardown_request
     def teardown_request(exception):
-        db = getattr(g, "db", None)
+        db = g.pop("db", None)
         if db is not None:
             db.close()
+
+    def csrf_token():
+        if "_csrf" not in session:
+            session["_csrf"] = secrets.token_urlsafe(32)
+        return session["_csrf"]
+
+    app.jinja_env.globals["csrf_token"] = csrf_token
 
     # ---------- Auth Helpers ----------
     def login_required(view):
@@ -57,27 +130,78 @@ def create_app():
         return session.get("user_id")
 
     # ---------- Utils ----------
-    def allowed_file(filename: str) -> bool:
-        if "." not in filename:
-            return False
-        ext = filename.rsplit(".", 1)[1].lower()
-        return ext in ALLOWED_EXTENSIONS
-
-    def safe_markdown(text: str) -> str:
-        """
-        Markdown -> HTML.
-        Para MVP/portfólio, usamos Markdown padrão.
-        Observação: não é sanitizado contra HTML malicioso. Para produção real,
-        use uma sanitização (ex: bleach) e desabilite HTML.
-        """
-        return md.markdown(
+    def render_markdown(text: str) -> str:
+        html = md.markdown(
             text or "",
-            extensions=["fenced_code", "codehilite", "tables", "nl2br"]
+            extensions=MD_EXTENSIONS,
+            extension_configs=MD_EXTENSION_CONFIGS,
         )
+        return nh3.clean(html, attributes=MD_ATTRIBUTES)
 
     def require_owner(row_user_id: int):
         if row_user_id != current_user_id():
             abort(403)
+
+    def get_owned_topic(topic_id: int):
+        topic = g.db.execute(
+            "SELECT id, user_id, name FROM topics WHERE id = ?",
+            (topic_id,)
+        ).fetchone()
+        if not topic:
+            abort(404)
+        require_owner(topic["user_id"])
+        return topic
+
+    def get_owned_note(note_id: int):
+        note = g.db.execute(
+            """
+            SELECT n.id, n.topic_id, n.title, n.content, n.tags, n.created_at, n.updated_at,
+                   t.user_id, t.name AS topic_name
+            FROM notes n
+            JOIN topics t ON t.id = n.topic_id
+            WHERE n.id = ?
+            """,
+            (note_id,)
+        ).fetchone()
+        if not note:
+            abort(404)
+        require_owner(note["user_id"])
+        return note
+
+    def note_images(note_id: int):
+        return g.db.execute(
+            "SELECT id, file_name, created_at FROM images WHERE note_id = ? ORDER BY created_at DESC",
+            (note_id,)
+        ).fetchall()
+
+    def save_images(note_id: int, files) -> int:
+        saved = 0
+        for file in files:
+            if not file or not file.filename:
+                continue
+
+            filename = secure_filename(file.filename)
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if ext not in ALLOWED_EXTENSIONS:
+                continue
+
+            base = re.sub(r"[^a-zA-Z0-9_\-]", "_", filename.rsplit(".", 1)[0])[:40]
+            unique_name = f"{note_id}/{base}_{secrets.token_hex(8)}.{ext}"
+            storage.save(file, unique_name)
+
+            g.db.execute(
+                "INSERT INTO images (note_id, file_name, created_at) VALUES (?, ?, ?)",
+                (note_id, unique_name, utcnow())
+            )
+            saved += 1
+
+        if saved:
+            g.db.commit()
+        return saved
+
+    def delete_image_files(rows):
+        for img in rows:
+            storage.delete(img["file_name"])
 
     # ---------- Routes ----------
     @app.get("/")
@@ -96,24 +220,25 @@ def create_app():
         password = request.form.get("password") or ""
 
         if not email or not password:
-            flash("Preenche email e senha, pô.", "error")
+            flash("Preencha email e senha.", "error")
             return redirect(url_for("register"))
 
-        if len(password) < 6:
-            flash("Senha fraca. Coloca pelo menos 6 caracteres.", "error")
+        if len(password) < 8:
+            flash("Senha fraca. Use pelo menos 8 caracteres.", "error")
             return redirect(url_for("register"))
 
         try:
             g.db.execute(
                 "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
-                (email, generate_password_hash(password), datetime.utcnow().isoformat())
+                (email, generate_password_hash(password), utcnow())
             )
             g.db.commit()
-        except sqlite3.IntegrityError:
-            flash("Esse email já existe. Faz login.", "error")
+        except database.IntegrityError:
+            g.db.rollback()
+            flash("Esse email já tem um cofre. Entre com ele.", "error")
             return redirect(url_for("login"))
 
-        flash("Conta criada. Agora entra aí 👇", "success")
+        flash("Cofre criado. Agora é só entrar.", "success")
         return redirect(url_for("login"))
 
     @app.get("/login")
@@ -131,17 +256,18 @@ def create_app():
         ).fetchone()
 
         if not user or not check_password_hash(user["password_hash"], password):
-            flash("Email ou senha errados.", "error")
+            flash("Email ou senha não conferem.", "error")
             return redirect(url_for("login"))
 
+        session.clear()
         session["user_id"] = user["id"]
         session["email"] = user["email"]
         return redirect(url_for("dashboard"))
 
-    @app.get("/logout")
+    @app.post("/logout")
     def logout():
         session.clear()
-        flash("Saiu. Volta logo 😌", "success")
+        flash("Cofre trancado. Até a próxima.", "success")
         return redirect(url_for("login"))
 
     # ---------- Dashboard ----------
@@ -167,32 +293,28 @@ def create_app():
         notes = []
         topic_selected = None
         if topic_id:
-            topic_selected = g.db.execute(
-                "SELECT id, user_id, name FROM topics WHERE id = ?",
-                (topic_id,)
-            ).fetchone()
-            if topic_selected:
-                require_owner(topic_selected["user_id"])
+            topic_selected = get_owned_topic(topic_id)
 
-                base_sql = """
-                    SELECT id, topic_id, title, tags, created_at, updated_at
-                    FROM notes
-                    WHERE topic_id = ?
-                """
-                params = [topic_id]
+            base_sql = """
+                SELECT id, topic_id, title, tags, created_at, updated_at
+                FROM notes
+                WHERE topic_id = ?
+            """
+            params = [topic_id]
 
-                if q:
-                    if q.lower().startswith("tag:"):
-                        tag = q.split(":", 1)[1].strip().lower()
-                        base_sql += " AND LOWER(COALESCE(tags,'')) LIKE ?"
-                        params.append(f"%{tag}%")
-                    else:
-                        base_sql += " AND (LOWER(title) LIKE ? OR LOWER(COALESCE(content,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)"
-                        qq = f"%{q.lower()}%"
-                        params.extend([qq, qq, qq])
+            if q:
+                if q.lower().startswith("tag:"):
+                    # Match exato da tag: "tag:sql" não pega "mysql"
+                    tag = normalize_tags(q.split(":", 1)[1]).replace(" ", "")
+                    base_sql += " AND (',' || REPLACE(LOWER(COALESCE(tags,'')), ' ', '') || ',') LIKE ?"
+                    params.append(f"%,{tag},%")
+                else:
+                    base_sql += " AND (LOWER(title) LIKE ? OR LOWER(COALESCE(content,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)"
+                    qq = f"%{q.lower()}%"
+                    params.extend([qq, qq, qq])
 
-                base_sql += " ORDER BY COALESCE(updated_at, created_at) DESC"
-                notes = g.db.execute(base_sql, params).fetchall()
+            base_sql += " ORDER BY COALESCE(updated_at, created_at) DESC"
+            notes = g.db.execute(base_sql, params).fetchall()
 
         return render_template(
             "dashboard.html",
@@ -212,60 +334,42 @@ def create_app():
     def topic_new_post():
         name = (request.form.get("name") or "").strip()
         if not name:
-            flash("Tópico sem nome é caos. Dá um nome aí.", "error")
+            flash("Tópico sem nome é caos. Dê um nome.", "error")
             return redirect(url_for("topic_new"))
 
-        g.db.execute(
-            "INSERT INTO topics (user_id, name, created_at) VALUES (?, ?, ?)",
-            (current_user_id(), name, datetime.utcnow().isoformat())
-        )
+        row = g.db.execute(
+            "INSERT INTO topics (user_id, name, created_at) VALUES (?, ?, ?) RETURNING id",
+            (current_user_id(), name, utcnow())
+        ).fetchone()
         g.db.commit()
-        flash("Tópico criado ✅", "success")
-        return redirect(url_for("dashboard"))
+        flash("Tópico criado.", "success")
+        return redirect(url_for("dashboard", topic_id=row["id"]))
 
     @app.get("/topics/<int:topic_id>/edit")
     @login_required
     def topic_edit(topic_id: int):
-        topic = g.db.execute(
-            "SELECT id, user_id, name FROM topics WHERE id = ?",
-            (topic_id,)
-        ).fetchone()
-        if not topic:
-            abort(404)
-        require_owner(topic["user_id"])
+        topic = get_owned_topic(topic_id)
         return render_template("topic_form.html", mode="edit", topic=topic)
 
     @app.post("/topics/<int:topic_id>/edit")
     @login_required
     def topic_edit_post(topic_id: int):
-        topic = g.db.execute(
-            "SELECT id, user_id, name FROM topics WHERE id = ?",
-            (topic_id,)
-        ).fetchone()
-        if not topic:
-            abort(404)
-        require_owner(topic["user_id"])
+        get_owned_topic(topic_id)
 
         name = (request.form.get("name") or "").strip()
         if not name:
-            flash("Bota um nome decente pro tópico.", "error")
+            flash("O tópico precisa de um nome.", "error")
             return redirect(url_for("topic_edit", topic_id=topic_id))
 
         g.db.execute("UPDATE topics SET name = ? WHERE id = ?", (name, topic_id))
         g.db.commit()
-        flash("Tópico atualizado ✨", "success")
+        flash("Tópico atualizado.", "success")
         return redirect(url_for("dashboard", topic_id=topic_id))
 
     @app.post("/topics/<int:topic_id>/delete")
     @login_required
     def topic_delete(topic_id: int):
-        topic = g.db.execute(
-            "SELECT id, user_id FROM topics WHERE id = ?",
-            (topic_id,)
-        ).fetchone()
-        if not topic:
-            abort(404)
-        require_owner(topic["user_id"])
+        get_owned_topic(topic_id)
 
         images = g.db.execute(
             """
@@ -276,135 +380,72 @@ def create_app():
             """,
             (topic_id,)
         ).fetchall()
-        for img in images:
-            try:
-                os.remove(os.path.join(app.config["UPLOAD_FOLDER"], img["file_name"]))
-            except FileNotFoundError:
-                pass
 
         g.db.execute("DELETE FROM topics WHERE id = ?", (topic_id,))
         g.db.commit()
-        flash("Tópico deletado 🗑️", "success")
+        delete_image_files(images)
+        flash("Tópico excluído.", "success")
         return redirect(url_for("dashboard"))
 
     # ---------- Notes CRUD ----------
     @app.get("/topics/<int:topic_id>/notes/new")
     @login_required
     def note_new(topic_id: int):
-        topic = g.db.execute(
-            "SELECT id, user_id, name FROM topics WHERE id = ?",
-            (topic_id,)
-        ).fetchone()
-        if not topic:
-            abort(404)
-        require_owner(topic["user_id"])
+        topic = get_owned_topic(topic_id)
         return render_template("note_form.html", mode="new", topic=topic, note=None, images=[])
 
     @app.post("/topics/<int:topic_id>/notes/new")
     @login_required
     def note_new_post(topic_id: int):
-        topic = g.db.execute(
-            "SELECT id, user_id, name FROM topics WHERE id = ?",
-            (topic_id,)
-        ).fetchone()
-        if not topic:
-            abort(404)
-        require_owner(topic["user_id"])
+        get_owned_topic(topic_id)
 
         title = (request.form.get("title") or "").strip()
         content = request.form.get("content") or ""
-        tags = (request.form.get("tags") or "").strip()
+        tags = normalize_tags(request.form.get("tags"))
 
         if not title:
-            flash("Sem título não dá. Coloca um.", "error")
+            flash("Toda nota precisa de um título.", "error")
             return redirect(url_for("note_new", topic_id=topic_id))
 
-        cur = g.db.execute(
+        row = g.db.execute(
             """
             INSERT INTO notes (topic_id, title, content, tags, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
             """,
-            (topic_id, title, content, tags, datetime.utcnow().isoformat(), None)
-        )
-        note_id = cur.lastrowid
+            (topic_id, title, content, tags, utcnow(), None)
+        ).fetchone()
+        note_id = row["id"]
         g.db.commit()
 
-        files = request.files.getlist("images")
-        saved = save_images(app, g.db, note_id, files)
+        saved = save_images(note_id, request.files.getlist("images"))
         if saved:
-            flash(f"{saved} imagem(ns) anexada(s) 📎", "success")
+            flash(f"{saved} imagem(ns) anexada(s).", "success")
 
         return redirect(url_for("note_view", note_id=note_id))
 
     @app.get("/notes/<int:note_id>")
     @login_required
     def note_view(note_id: int):
-        note = g.db.execute(
-            """
-            SELECT n.id, n.topic_id, n.title, n.content, n.tags, n.created_at, n.updated_at,
-                   t.user_id, t.name AS topic_name
-            FROM notes n
-            JOIN topics t ON t.id = n.topic_id
-            WHERE n.id = ?
-            """,
-            (note_id,)
-        ).fetchone()
-        if not note:
-            abort(404)
-        require_owner(note["user_id"])
-
-        images = g.db.execute(
-            "SELECT id, file_name, created_at FROM images WHERE note_id = ? ORDER BY created_at DESC",
-            (note_id,)
-        ).fetchall()
-
-        rendered = safe_markdown(note["content"] or "")
-        return render_template("note_view.html", note=note, images=images, rendered=rendered)
+        note = get_owned_note(note_id)
+        rendered = render_markdown(note["content"] or "")
+        return render_template("note_view.html", note=note, images=note_images(note_id), rendered=rendered)
 
     @app.get("/notes/<int:note_id>/edit")
     @login_required
     def note_edit(note_id: int):
-        note = g.db.execute(
-            """
-            SELECT n.id, n.topic_id, n.title, n.content, n.tags,
-                   t.user_id, t.name AS topic_name
-            FROM notes n
-            JOIN topics t ON t.id = n.topic_id
-            WHERE n.id = ?
-            """,
-            (note_id,)
-        ).fetchone()
-        if not note:
-            abort(404)
-        require_owner(note["user_id"])
-
-        images = g.db.execute(
-            "SELECT id, file_name, created_at FROM images WHERE note_id = ? ORDER BY created_at DESC",
-            (note_id,)
-        ).fetchall()
-
+        note = get_owned_note(note_id)
         topic = {"id": note["topic_id"], "name": note["topic_name"]}
-        return render_template("note_form.html", mode="edit", topic=topic, note=note, images=images)
+        return render_template("note_form.html", mode="edit", topic=topic, note=note, images=note_images(note_id))
 
     @app.post("/notes/<int:note_id>/edit")
     @login_required
     def note_edit_post(note_id: int):
-        note = g.db.execute(
-            """
-            SELECT n.id, n.topic_id, t.user_id
-            FROM notes n
-            JOIN topics t ON t.id = n.topic_id
-            WHERE n.id = ?
-            """,
-            (note_id,)
-        ).fetchone()
-        if not note:
-            abort(404)
-        require_owner(note["user_id"])
+        get_owned_note(note_id)
 
         title = (request.form.get("title") or "").strip()
         content = request.form.get("content") or ""
-        tags = (request.form.get("tags") or "").strip()
+        tags = normalize_tags(request.form.get("tags"))
 
         if not title:
             flash("Título vazio? Aí não.", "error")
@@ -412,54 +453,47 @@ def create_app():
 
         g.db.execute(
             "UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ? WHERE id = ?",
-            (title, content, tags, datetime.utcnow().isoformat(), note_id)
+            (title, content, tags, utcnow(), note_id)
         )
         g.db.commit()
 
-        files = request.files.getlist("images")
-        saved = save_images(app, g.db, note_id, files)
+        saved = save_images(note_id, request.files.getlist("images"))
         if saved:
-            flash(f"{saved} imagem(ns) anexada(s) 📎", "success")
+            flash(f"{saved} imagem(ns) anexada(s).", "success")
 
-        flash("Nota atualizada ✅", "success")
+        flash("Nota guardada.", "success")
         return redirect(url_for("note_view", note_id=note_id))
 
     @app.post("/notes/<int:note_id>/delete")
     @login_required
     def note_delete(note_id: int):
-        note = g.db.execute(
-            """
-            SELECT n.id, n.topic_id, t.user_id
-            FROM notes n
-            JOIN topics t ON t.id = n.topic_id
-            WHERE n.id = ?
-            """,
-            (note_id,)
-        ).fetchone()
-        if not note:
-            abort(404)
-        require_owner(note["user_id"])
-
-        images = g.db.execute(
-            "SELECT file_name FROM images WHERE note_id = ?",
-            (note_id,)
-        ).fetchall()
-        for img in images:
-            try:
-                os.remove(os.path.join(app.config["UPLOAD_FOLDER"], img["file_name"]))
-            except FileNotFoundError:
-                pass
+        note = get_owned_note(note_id)
+        images = note_images(note_id)
 
         g.db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         g.db.commit()
-        flash("Nota deletada 🗑️", "success")
+        delete_image_files(images)
+        flash("Nota excluída.", "success")
         return redirect(url_for("dashboard", topic_id=note["topic_id"]))
 
     # ---------- Images ----------
-    @app.get("/uploads/<path:filename>")
+    @app.get("/images/<int:image_id>")
     @login_required
-    def uploaded_file(filename):
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    def image_file(image_id: int):
+        row = g.db.execute(
+            """
+            SELECT i.file_name, t.user_id
+            FROM images i
+            JOIN notes n ON n.id = i.note_id
+            JOIN topics t ON t.id = n.topic_id
+            WHERE i.id = ?
+            """,
+            (image_id,)
+        ).fetchone()
+        if not row:
+            abort(404)
+        require_owner(row["user_id"])
+        return storage.serve(row["file_name"])
 
     @app.post("/images/<int:image_id>/delete")
     @login_required
@@ -478,118 +512,16 @@ def create_app():
             abort(404)
         require_owner(row["user_id"])
 
-        try:
-            os.remove(os.path.join(app.config["UPLOAD_FOLDER"], row["file_name"]))
-        except FileNotFoundError:
-            pass
-
         g.db.execute("DELETE FROM images WHERE id = ?", (image_id,))
         g.db.commit()
-        flash("Imagem removida 🧼", "success")
+        storage.delete(row["file_name"])
+        flash("Imagem removida.", "success")
         return redirect(url_for("note_edit", note_id=row["note_id"]))
 
     return app
 
 
-# ---------- DB ----------
-def get_db(app: Flask):
-    conn = sqlite3.connect(app.config["DATABASE"])
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
-def column_exists(db: sqlite3.Connection, table: str, column: str) -> bool:
-    cols = db.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(c["name"] == column for c in cols)
-
-
-def init_db(db: sqlite3.Connection):
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS topics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """
-    )
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            topic_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT,
-            tags TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            FOREIGN KEY (topic_id) REFERENCES topics(id) ON DELETE CASCADE
-        )
-        """
-    )
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            note_id INTEGER NOT NULL,
-            file_name TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
-        )
-        """
-    )
-    db.commit()
-
-    # Migration safety: if DB existed pre-tags
-    if not column_exists(db, "notes", "tags"):
-        db.execute("ALTER TABLE notes ADD COLUMN tags TEXT")
-        db.commit()
-
-
-# ---------- Upload ----------
-def save_images(app: Flask, db: sqlite3.Connection, note_id: int, files) -> int:
-    saved = 0
-    for file in files:
-        if not file or not file.filename:
-            continue
-
-        filename = secure_filename(file.filename)
-        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        if ext not in {"png", "jpg", "jpeg", "webp", "gif"}:
-            continue
-
-        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-        base = re.sub(r"[^a-zA-Z0-9_\-]", "_", filename.rsplit(".", 1)[0])[:50]
-        unique_name = f"{base}_{note_id}_{stamp}.{ext}"
-
-        out_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-        file.save(out_path)
-
-        db.execute(
-            "INSERT INTO images (note_id, file_name, created_at) VALUES (?, ?, ?)",
-            (note_id, unique_name, datetime.utcnow().isoformat())
-        )
-        saved += 1
-
-    if saved:
-        db.commit()
-    return saved
-
-
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=not IS_PRODUCTION)

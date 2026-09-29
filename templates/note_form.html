@@ -15,6 +15,7 @@
 
   <form method="post" enctype="multipart/form-data"
         action="{% if mode == 'new' %}{{ url_for('note_new_post', topic_id=topic.id) }}{% else %}{{ url_for('note_edit_post', note_id=note.id) }}{% endif %}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label>Título</label>
     <input type="text" name="title" required value="{{ note.title if note else '' }}" placeholder="Ex: INNER JOIN, Probabilidade, Pandas...">
 
@@ -41,9 +42,10 @@
     <div class="images">
       {% for img in images %}
         <div class="img-card">
-          <img src="{{ url_for('uploaded_file', filename=img.file_name) }}" alt="anexo">
+          <img src="{{ url_for('image_file', image_id=img.id) }}" alt="anexo">
           <form method="post" action="{{ url_for('image_delete', image_id=img.id) }}"
                 onsubmit="return confirm('Remover imagem?');">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <button class="btn danger small" type="submit">Remover</button>
           </form>
         </div>

@@ -8,6 +8,7 @@
     <p class="muted">Volta pro jogo. Seus estudos tão te esperando.</p>
 
     <form method="post" action="{{ url_for('login_post') }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label>Email</label>
       <input type="email" name="email" required placeholder="voce@email.com">
 

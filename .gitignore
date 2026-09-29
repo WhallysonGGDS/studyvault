@@ -1,0 +1,11 @@
+# Ambiente
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Dados locais (banco SQLite e uploads)
+instance/
+
+# Segredos
+.env
