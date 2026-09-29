@@ -1,20 +1,31 @@
-{% extends "base.html" %}
-{% block title %}Tópico — StudyVault{% endblock %}
+{% extends "layout.html" %}
+{% set active_topic_id = topic.id if topic else None %}
 
-{% block content %}
-<div class="card wide">
-  <h1>{% if mode == "new" %}Novo tópico{% else %}Editar tópico{% endif %}</h1>
+{% block title %}{{ 'Novo tópico' if mode == 'new' else 'Renomear tópico' }} — StudyVault{% endblock %}
 
-  <form method="post"
-        action="{% if mode == 'new' %}{{ url_for('topic_new_post') }}{% else %}{{ url_for('topic_edit_post', topic_id=topic.id) }}{% endif %}">
-      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <label>Nome do tópico</label>
-    <input type="text" name="name" required value="{{ topic.name if topic else '' }}" placeholder="Ex: SQL, Estatística, Python...">
-
-    <div class="row">
-      <button class="btn primary" type="submit">Salvar</button>
-      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=topic.id) if topic else url_for('dashboard') }}">Cancelar</a>
-    </div>
-  </form>
+{% block stage %}
+<div class="stage-bar rise">
+  <a class="act back" href="{{ url_for('dashboard', topic_id=topic.id) if topic else url_for('dashboard') }}">
+    <span class="arrow">←</span> {{ topic.name if topic else 'Cofre' }}
+  </a>
 </div>
+
+<form class="naming" method="post"
+      action="{% if mode == 'new' %}{{ url_for('topic_new_post') }}{% else %}{{ url_for('topic_edit_post', topic_id=topic.id) }}{% endif %}">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+  <label>
+    <span class="eyebrow rise" style="--i:1">
+      <span>{{ 'Novo tópico' if mode == 'new' else 'Renomear tópico' }}</span>
+      {% if mode == 'new' %}<span>{{ '%02d' % (nav_topics|length + 1) }}</span>{% endif %}
+    </span>
+    <input class="rise" style="--i:2" type="text" name="name" required autofocus autocomplete="off"
+           value="{{ topic.name if topic else '' }}" placeholder="Ex.: Cálculo I">
+  </label>
+
+  <div class="row rise" style="--i:3">
+    <button class="cta" type="submit">{{ 'Criar tópico' if mode == 'new' else 'Salvar nome' }} <span class="arrow">→</span></button>
+    <a class="act" href="{{ url_for('dashboard', topic_id=topic.id) if topic else url_for('dashboard') }}">Cancelar</a>
+  </div>
+</form>
 {% endblock %}

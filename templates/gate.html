@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block body %}
+<main class="gate">
+  <div class="dial" aria-hidden="true">
+    <svg viewBox="0 0 1000 1000" fill="none" stroke="currentColor">
+      <g class="ring">
+        <circle cx="500" cy="500" r="480" stroke-opacity=".07"/>
+        <circle cx="500" cy="500" r="438" stroke-opacity=".12"/>
+        {% for i in range(180) %}
+          <line x1="500" y1="62" x2="500" y2="{{ 80 if i % 15 == 0 else (72 if i % 5 == 0 else 67) }}"
+                stroke-opacity="{{ 0.4 if i % 15 == 0 else 0.13 }}"
+                transform="rotate({{ i * 2 }} 500 500)"/>
+        {% endfor %}
+        {% for i in range(12) %}
+          <text x="500" y="112" transform="rotate({{ i * 30 }} 500 500)" text-anchor="middle"
+                fill="currentColor" fill-opacity=".32" stroke="none"
+                font-family="Geist Mono, monospace" font-size="13" letter-spacing="1">{{ '%02d' % (i * 5) }}</text>
+        {% endfor %}
+      </g>
+      <g class="ring inner">
+        <circle cx="500" cy="500" r="340" stroke-opacity=".09"/>
+        <circle cx="500" cy="500" r="300" stroke-opacity=".22" stroke-dasharray="1 9"/>
+        <circle cx="500" cy="500" r="176" stroke-opacity=".07"/>
+        <line x1="500" y1="300" x2="500" y2="340" stroke-opacity=".3"/>
+      </g>
+      <g class="marker">
+        <path d="M500 30 L506 44 L494 44 Z" fill="#a8c8ff" stroke="none"/>
+        <line x1="500" y1="46" x2="500" y2="84" stroke="#a8c8ff" stroke-opacity=".8"/>
+      </g>
+    </svg>
+  </div>
+
+  <header class="gate-head rise">
+    <span class="wordmark">StudyVault</span>
+  </header>
+
+  <section class="gate-statement">
+    <h1 class="display rise" style="--i:2">{% block statement %}{% endblock %}</h1>
+    <p class="rise" style="--i:4">{% block lede %}{% endblock %}</p>
+  </section>
+
+  <section class="gate-form rise" style="--i:6">
+    {% block form %}{% endblock %}
+  </section>
+
+  <footer class="gate-foot rise" style="--i:8">
+    <span class="eyebrow"><span>Arquivo pessoal de estudos</span></span>
+    <span class="eyebrow"><span>Markdown</span><span>Código</span><span>Imagens</span></span>
+  </footer>
+</main>
+{% endblock %}

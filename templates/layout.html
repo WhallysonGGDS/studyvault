@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block body %}
+<header class="mbar">
+  <a class="wordmark" href="{{ url_for('dashboard') }}">StudyVault</a>
+  <button class="act" type="button" data-rail-toggle aria-controls="rail" aria-expanded="false">Índice</button>
+</header>
+
+<div class="shell">
+  <aside class="rail" id="rail" aria-label="Índice de tópicos">
+    <div class="rail-head">
+      <a class="wordmark" href="{{ url_for('dashboard') }}">StudyVault</a>
+      <button class="act only-m" type="button" data-rail-toggle>Fechar</button>
+    </div>
+
+    <div class="rail-title">
+      <span class="eyebrow">Índice</span>
+      <span class="mono faint">{{ '%02d' % (nav_topics|length) }}</span>
+    </div>
+
+    <nav class="index">
+      {% for t in nav_topics %}
+        <a href="{{ url_for('dashboard', topic_id=t.id) }}"
+           class="{% if active_topic_id == t.id %}active{% endif %}"
+           {% if active_topic_id == t.id %}aria-current="page"{% endif %}>
+          <span class="n">{{ '%02d' % loop.index }}</span>
+          <span class="name">{{ t.name }}</span>
+          <span class="count">{{ t.notes_count }}</span>
+        </a>
+      {% else %}
+        <p class="empty">Nenhum tópico ainda.</p>
+      {% endfor %}
+    </nav>
+
+    <a class="act rail-new" href="{{ url_for('topic_new') }}">Novo tópico <span class="arrow">+</span></a>
+
+    <div class="rail-foot">
+      <span class="who">{{ session.get("email") }}</span>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="act" type="submit">Trancar</button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="stage">
+    {% block stage %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

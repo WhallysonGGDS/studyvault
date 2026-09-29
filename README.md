@@ -4,6 +4,15 @@ Um cofre para o que você estuda. Tópicos, notas em **Markdown** com realce de 
 
 Feito com Flask. Roda com SQLite no seu computador e com Postgres + Supabase Storage em produção, tudo no plano gratuito.
 
+## Design
+
+- **Sensação:** um cofre silencioso. Quase preto azulado, uma única cor de destaque (azul-gelo) usada só para foco, seleção e progresso.
+- **Tipografia:** Newsreader para ler, Geist para a interface e Geist Mono para metadados e para escrever. O texto cru é escrito em mono e lido em serifa.
+- **Composição:** índice de tópicos como sumário de livro, notas em lista editorial e leitura em coluna de ~66 caracteres. Sem cards.
+- **Movimento:** o dial da entrada gira uma vez, como uma combinação sendo aberta. Os elementos entram em sequência, o título da nota faz transição entre a lista e a leitura (View Transitions) e uma linha de progresso acompanha a leitura. Tudo desliga com `prefers-reduced-motion`.
+- **Mobile:** o índice vira uma folha de tela cheia, e as linhas de nota se reorganizam em vez de encolher.
+- **Atalhos:** `/` busca, `Ctrl/⌘ S` guarda a nota, `Esc` fecha o índice.
+
 ## Rodar localmente
 
 ```bash

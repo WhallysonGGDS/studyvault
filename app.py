@@ -52,7 +52,7 @@ MD_ATTRIBUTES = {
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat()
 
 
 def normalize_tags(raw: str) -> str:
@@ -117,6 +117,27 @@ def create_app():
 
     app.jinja_env.globals["csrf_token"] = csrf_token
 
+    MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+
+    @app.template_filter("datefmt")
+    def datefmt(value):
+        if not value:
+            return ""
+        try:
+            d = datetime.fromisoformat(value)
+        except ValueError:
+            return value[:10]
+        return f"{d.day:02d} {MONTHS[d.month - 1]} {d.year}"
+
+    @app.template_filter("reading_time")
+    def reading_time(text):
+        words = len((text or "").split())
+        return max(1, round(words / 200))
+
+    @app.template_filter("taglist")
+    def taglist(tags):
+        return [t.strip() for t in (tags or "").split(",") if t.strip()]
+
     # ---------- Auth Helpers ----------
     def login_required(view):
         @wraps(view)
@@ -137,6 +158,27 @@ def create_app():
             extension_configs=MD_EXTENSION_CONFIGS,
         )
         return nh3.clean(html, attributes=MD_ATTRIBUTES)
+
+    def user_topics():
+        """Tópicos do usuário (com contagem), cacheados por request."""
+        if "topics" not in g:
+            g.topics = g.db.execute(
+                """
+                SELECT t.id, t.name,
+                       (SELECT COUNT(*) FROM notes n WHERE n.topic_id = t.id) AS notes_count
+                FROM topics t
+                WHERE t.user_id = ?
+                ORDER BY t.created_at ASC
+                """,
+                (current_user_id(),)
+            ).fetchall()
+        return g.topics
+
+    @app.context_processor
+    def inject_nav():
+        if "user_id" in session and "db" in g:
+            return {"nav_topics": user_topics()}
+        return {}
 
     def require_owner(row_user_id: int):
         if row_user_id != current_user_id():
@@ -276,51 +318,49 @@ def create_app():
     def dashboard():
         user_id = current_user_id()
 
-        topics = g.db.execute(
-            """
-            SELECT t.id, t.name,
-                   (SELECT COUNT(*) FROM notes n WHERE n.topic_id = t.id) AS notes_count
-            FROM topics t
-            WHERE t.user_id = ?
-            ORDER BY t.created_at DESC
-            """,
-            (user_id,)
-        ).fetchall()
+        topics = user_topics()
 
         topic_id = request.args.get("topic_id", type=int)
         q = (request.args.get("q") or "").strip()
 
-        notes = []
-        topic_selected = None
-        if topic_id:
-            topic_selected = get_owned_topic(topic_id)
+        # Sem tópico: busca/recentes em todo o cofre. Com tópico: só nele.
+        topic_selected = get_owned_topic(topic_id) if topic_id else None
 
-            base_sql = """
-                SELECT id, topic_id, title, tags, created_at, updated_at
-                FROM notes
-                WHERE topic_id = ?
-            """
-            params = [topic_id]
+        base_sql = """
+            SELECT n.id, n.topic_id, n.title, n.tags, n.created_at, n.updated_at,
+                   t.name AS topic_name
+            FROM notes n
+            JOIN topics t ON t.id = n.topic_id
+            WHERE t.user_id = ?
+        """
+        params = [user_id]
+        if topic_selected:
+            base_sql += " AND n.topic_id = ?"
+            params.append(topic_id)
 
-            if q:
-                if q.lower().startswith("tag:"):
-                    # Match exato da tag: "tag:sql" não pega "mysql"
-                    tag = normalize_tags(q.split(":", 1)[1]).replace(" ", "")
-                    base_sql += " AND (',' || REPLACE(LOWER(COALESCE(tags,'')), ' ', '') || ',') LIKE ?"
-                    params.append(f"%,{tag},%")
-                else:
-                    base_sql += " AND (LOWER(title) LIKE ? OR LOWER(COALESCE(content,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)"
-                    qq = f"%{q.lower()}%"
-                    params.extend([qq, qq, qq])
+        if q:
+            if q.lower().startswith("tag:"):
+                # Match exato da tag: "tag:sql" não pega "mysql"
+                tag = normalize_tags(q.split(":", 1)[1]).replace(" ", "")
+                base_sql += " AND (',' || REPLACE(LOWER(COALESCE(n.tags,'')), ' ', '') || ',') LIKE ?"
+                params.append(f"%,{tag},%")
+            else:
+                base_sql += " AND (LOWER(n.title) LIKE ? OR LOWER(COALESCE(n.content,'')) LIKE ? OR LOWER(COALESCE(n.tags,'')) LIKE ?)"
+                qq = f"%{q.lower()}%"
+                params.extend([qq, qq, qq])
 
-            base_sql += " ORDER BY COALESCE(updated_at, created_at) DESC"
-            notes = g.db.execute(base_sql, params).fetchall()
+        base_sql += " ORDER BY COALESCE(n.updated_at, n.created_at) DESC, n.id DESC"
+        if not topic_selected and not q:
+            base_sql += " LIMIT 8"
+        notes = g.db.execute(base_sql, params).fetchall()
 
         return render_template(
             "dashboard.html",
             topics=topics,
             notes=notes,
-            topic_selected=topic_selected
+            topic_selected=topic_selected,
+            q=q,
+            total_notes=sum(t["notes_count"] for t in topics),
         )
 
     # ---------- Topics CRUD ----------
@@ -399,7 +439,7 @@ def create_app():
     def note_new_post(topic_id: int):
         get_owned_topic(topic_id)
 
-        title = (request.form.get("title") or "").strip()
+        title = " ".join((request.form.get("title") or "").split())
         content = request.form.get("content") or ""
         tags = normalize_tags(request.form.get("tags"))
 
@@ -443,7 +483,7 @@ def create_app():
     def note_edit_post(note_id: int):
         get_owned_note(note_id)
 
-        title = (request.form.get("title") or "").strip()
+        title = " ".join((request.form.get("title") or "").split())
         content = request.form.get("content") or ""
         tags = normalize_tags(request.form.get("tags"))
 

@@ -1,27 +1,26 @@
-{% extends "base.html" %}
-{% block title %}Cadastro — StudyVault{% endblock %}
+{% extends "gate.html" %}
+{% block title %}Criar um cofre — StudyVault{% endblock %}
 
-{% block content %}
-<div class="auth">
-  <div class="card">
-    <h1>Criar conta</h1>
-    <p class="muted">Cofre novo, mente nova. Bora.</p>
+{% block statement %}Comece o seu <em>arquivo</em> de conhecimento.{% endblock %}
+{% block lede %}Tópicos para organizar, notas para lembrar e uma busca que encontra tudo. Só seu.{% endblock %}
 
-    <form method="post" action="{{ url_for('register_post') }}">
-      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-      <label>Email</label>
-      <input type="email" name="email" required placeholder="voce@email.com">
+{% block form %}
+<h2>Criar um cofre</h2>
+<form method="post" action="{{ url_for('register_post') }}">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 
-      <label>Senha</label>
-      <input type="password" name="password" required placeholder="mín. 6 caracteres">
+  <label class="field">
+    <span class="field-label">Email</span>
+    <input class="input" type="email" name="email" required autocomplete="email" placeholder="voce@email.com">
+  </label>
 
-      <button class="btn primary" type="submit">Criar</button>
-    </form>
+  <label class="field">
+    <span class="field-label">Senha</span>
+    <input class="input" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres">
+  </label>
 
-    <div class="auth-links">
-      <span class="muted">Já tem conta?</span>
-      <a href="{{ url_for('login') }}">Entrar</a>
-    </div>
-  </div>
-</div>
+  <button class="cta" type="submit">Criar meu cofre <span class="arrow">→</span></button>
+</form>
+
+<p class="gate-switch">Já tem um cofre? <a href="{{ url_for('login') }}">Entrar</a></p>
 {% endblock %}

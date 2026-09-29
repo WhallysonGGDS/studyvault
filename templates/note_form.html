@@ -1,56 +1,67 @@
-{% extends "base.html" %}
-{% block title %}Nota — StudyVault{% endblock %}
+{% extends "layout.html" %}
+{% set active_topic_id = topic.id %}
 
-{% block content %}
-<div class="card wide">
-  <div class="row space">
-    <div>
-      <h1>{% if mode == "new" %}Nova nota{% else %}Editar nota{% endif %}</h1>
-      <p class="muted">Tópico: <b>{{ topic.name }}</b></p>
-    </div>
-    {% if note %}
-      <a class="btn ghost" href="{{ url_for('note_view', note_id=note.id) }}">Ver</a>
-    {% endif %}
+{% block title %}{{ 'Nova nota' if mode == 'new' else 'Editando ' ~ note.title }} — StudyVault{% endblock %}
+
+{% block stage %}
+<form method="post" enctype="multipart/form-data" data-writer
+      action="{% if mode == 'new' %}{{ url_for('note_new_post', topic_id=topic.id) }}{% else %}{{ url_for('note_edit_post', note_id=note.id) }}{% endif %}">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+  <div class="stage-bar rise">
+    <a class="act back" href="{% if note %}{{ url_for('note_view', note_id=note.id) }}{% else %}{{ url_for('dashboard', topic_id=topic.id) }}{% endif %}">
+      <span class="arrow">←</span> {{ note.title if note else topic.name }}
+    </a>
+    <span class="eyebrow">
+      <span>{{ topic.name }}</span>
+      <span>{{ 'Nova nota' if mode == 'new' else 'Editando' }}</span>
+    </span>
   </div>
 
-  <form method="post" enctype="multipart/form-data"
-        action="{% if mode == 'new' %}{{ url_for('note_new_post', topic_id=topic.id) }}{% else %}{{ url_for('note_edit_post', note_id=note.id) }}{% endif %}">
-      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <label>Título</label>
-    <input type="text" name="title" required value="{{ note.title if note else '' }}" placeholder="Ex: INNER JOIN, Probabilidade, Pandas...">
+  <div class="writer">
+    <textarea class="title-input rise" style="--i:1" name="title" rows="1" required data-grow data-single-line
+              placeholder="Título da nota" aria-label="Título">{{ note.title if note else '' }}</textarea>
 
-    <label>Tags (separa por vírgula)</label>
-    <input type="text" name="tags"
-           value="{{ note.tags if note else '' }}"
-           placeholder="Ex: sql, join, analytics">
+    <label class="tags-line rise" style="--i:2">
+      <span aria-hidden="true">#</span>
+      <input type="text" name="tags" value="{{ note.tags if note else '' }}"
+             placeholder="tags, separadas, por vírgula" aria-label="Tags" autocomplete="off">
+    </label>
 
-    <label>Conteúdo (Markdown)</label>
-    <textarea name="content" rows="14" placeholder="Escreve aqui...">{{ note.content if note else '' }}</textarea>
+    <textarea class="body-input rise" style="--i:3" name="content" data-grow aria-label="Conteúdo em Markdown"
+              placeholder="Escreva em Markdown.&#10;&#10;## Títulos, **negrito**, listas, tabelas&#10;```sql&#10;SELECT código FROM blocos;&#10;```">{{ note.content if note else '' }}</textarea>
 
-    <label>Imagens (pode selecionar várias)</label>
-    <input type="file" name="images" accept="image/*" multiple>
+    <label class="drop rise" style="--i:4">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      <span data-drop-label>Arraste imagens ou clique para anexar · PNG, JPG, WEBP, GIF até 8 MB</span>
+      <input type="file" name="images" accept="image/png,image/jpeg,image/webp,image/gif" multiple>
+    </label>
 
-    <div class="row">
-      <button class="btn primary" type="submit">Salvar</button>
-      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=topic.id) }}">Voltar</a>
-    </div>
-  </form>
-
-  {% if images and mode == "edit" %}
-    <hr class="sep">
-    <h2>Anexos</h2>
-    <div class="images">
-      {% for img in images %}
-        <div class="img-card">
-          <img src="{{ url_for('image_file', image_id=img.id) }}" alt="anexo">
-          <form method="post" action="{{ url_for('image_delete', image_id=img.id) }}"
-                onsubmit="return confirm('Remover imagem?');">
-      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-            <button class="btn danger small" type="submit">Remover</button>
-          </form>
+    {% if images %}
+      <section class="attachments" style="margin-top: 48px;">
+        <span class="eyebrow"><span>Anexos</span><span>{{ images|length }}</span></span>
+        <div class="gallery">
+          {% for img in images %}
+            <figure>
+              <div class="frame"><img src="{{ url_for('image_file', image_id=img.id) }}" alt="Anexo {{ loop.index }}" loading="lazy"></div>
+              <button class="remove" type="submit" form="rm-{{ img.id }}">Remover</button>
+            </figure>
+          {% endfor %}
         </div>
-      {% endfor %}
+      </section>
+    {% endif %}
+
+    <div class="writer-bar">
+      <a class="act" href="{% if note %}{{ url_for('note_view', note_id=note.id) }}{% else %}{{ url_for('dashboard', topic_id=topic.id) }}{% endif %}">Cancelar</a>
+      <button class="cta" type="submit">Guardar nota <kbd data-kbd>Ctrl S</kbd> <span class="arrow">→</span></button>
     </div>
-  {% endif %}
-</div>
+  </div>
+</form>
+
+{% for img in images %}
+  <form id="rm-{{ img.id }}" method="post" action="{{ url_for('image_delete', image_id=img.id) }}"
+        data-confirm="Remover esta imagem? Alterações não salvas no texto serão perdidas." hidden>
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  </form>
+{% endfor %}
 {% endblock %}

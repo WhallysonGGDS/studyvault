@@ -1,0 +1,28 @@
+{% macro note_list(notes, show_topic=False, topic_id=None) %}
+<ol class="notes">
+  {% for n in notes %}
+    <li class="note-row rise" style="--i:{{ [loop.index + 3, 12]|min }}">
+      <span class="n">{{ '%02d' % loop.index }}</span>
+      <a class="title" href="{{ url_for('note_view', note_id=n.id) }}"
+         style="view-transition-name: note-{{ n.id }}">{{ n.title }}</a>
+      <span class="date">
+        {{ (n.updated_at or n.created_at)|datefmt }}
+        <span class="arrow" aria-hidden="true">→</span>
+      </span>
+      {% set tags = n.tags|taglist %}
+      {% if show_topic or tags %}
+        <div class="meta">
+          {% if show_topic %}<span class="topic-of">{{ n.topic_name }}</span>{% endif %}
+          {% if tags %}
+            <span class="tags">
+              {% for tg in tags %}
+                <a class="tag" href="{{ url_for('dashboard', topic_id=topic_id, q='tag:' ~ tg) }}">{{ tg }}</a>
+              {% endfor %}
+            </span>
+          {% endif %}
+        </div>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ol>
+{% endmacro %}

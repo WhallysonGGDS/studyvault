@@ -1,56 +1,62 @@
-{% extends "base.html" %}
+{% extends "layout.html" %}
+{% set active_topic_id = note.topic_id %}
+
 {% block title %}{{ note.title }} — StudyVault{% endblock %}
 
-{% block content %}
-<div class="card wide">
-  <div class="row space">
-    <div>
-      <h1>{{ note.title }}</h1>
-      <p class="muted">
-        Tópico: <b>{{ note.topic_name }}</b> ·
-        {% if note.updated_at %}Atualizada{% else %}Criada{% endif %}
-        em {{ (note.updated_at or note.created_at)[:19].replace("T"," ") }} UTC
-      </p>
+{% block stage %}
+<div class="progress" aria-hidden="true"></div>
 
-      {% if note.tags %}
-        <div class="tags">
-          {% for tg in note.tags.split(",") %}
-            {% set tgs = tg.strip() %}
-            {% if tgs %}
-              <a class="pill" href="{{ url_for('dashboard', topic_id=note.topic_id, q='tag:' ~ tgs) }}">{{ tgs }}</a>
-            {% endif %}
-          {% endfor %}
-        </div>
-      {% endif %}
-    </div>
-
-    <div class="row">
-      <a class="btn ghost" href="{{ url_for('dashboard', topic_id=note.topic_id) }}">Voltar</a>
-      <a class="btn" href="{{ url_for('note_edit', note_id=note.id) }}">Editar</a>
-      <form method="post" action="{{ url_for('note_delete', note_id=note.id) }}"
-            onsubmit="return confirm('Deletar nota?');">
+<div class="stage-bar rise">
+  <a class="act back" href="{{ url_for('dashboard', topic_id=note.topic_id) }}"><span class="arrow">←</span> {{ note.topic_name }}</a>
+  <div class="right">
+    <a class="act" href="{{ url_for('note_edit', note_id=note.id) }}">Editar</a>
+    <form method="post" action="{{ url_for('note_delete', note_id=note.id) }}"
+          data-confirm="Excluir “{{ note.title }}”? Isso não pode ser desfeito.">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <button class="btn danger" type="submit">Deletar</button>
-      </form>
-    </div>
+      <button class="act danger" type="submit">Excluir</button>
+    </form>
   </div>
+</div>
 
-  <hr class="sep">
+<article class="article">
+  <header class="article-head">
+    <div class="eyebrow rise" style="--i:1">
+      <span>{{ note.created_at|datefmt }}</span>
+      <span>{{ note.content|reading_time }} min de leitura</span>
+      {% if note.updated_at %}<span>editada em {{ note.updated_at|datefmt }}</span>{% endif %}
+    </div>
+    <h1 class="display rise" style="--i:2; view-transition-name: note-{{ note.id }}">{{ note.title }}</h1>
+    {% set tags = note.tags|taglist %}
+    {% if tags %}
+      <div class="tags rise" style="--i:3">
+        {% for tg in tags %}
+          <a class="tag" href="{{ url_for('dashboard', topic_id=note.topic_id, q='tag:' ~ tg) }}">{{ tg }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </header>
 
-  <div class="markdown">
-    {{ rendered|safe }}
+  <div class="prose rise" style="--i:4">
+    {% if rendered %}
+      {{ rendered|safe }}
+    {% else %}
+      <p class="faint">Esta nota ainda não tem conteúdo. <a href="{{ url_for('note_edit', note_id=note.id) }}">Começar a escrever</a>.</p>
+    {% endif %}
   </div>
 
   {% if images %}
-    <hr class="sep">
-    <h2>Anexos</h2>
-    <div class="images">
-      {% for img in images %}
-        <a class="img-card" href="{{ url_for('image_file', image_id=img.id) }}" target="_blank" rel="noopener">
-          <img src="{{ url_for('image_file', image_id=img.id) }}" alt="anexo">
-        </a>
-      {% endfor %}
-    </div>
+    <section class="attachments">
+      <span class="eyebrow"><span>Anexos</span><span>{{ images|length }}</span></span>
+      <div class="gallery">
+        {% for img in images %}
+          <figure>
+            <a href="{{ url_for('image_file', image_id=img.id) }}" target="_blank" rel="noopener">
+              <img src="{{ url_for('image_file', image_id=img.id) }}" alt="Anexo {{ loop.index }} de {{ note.title }}" loading="lazy">
+            </a>
+          </figure>
+        {% endfor %}
+      </div>
+    </section>
   {% endif %}
-</div>
+</article>
 {% endblock %}
