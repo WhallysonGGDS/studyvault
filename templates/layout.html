@@ -3,7 +3,10 @@
 {% block body %}
 <header class="mbar">
   <a class="wordmark" href="{{ url_for('dashboard') }}">StudyVault</a>
-  <button class="act" type="button" data-rail-toggle aria-controls="rail" aria-expanded="false">Índice</button>
+  <div class="mbar-right">
+    {% if due_total %}<a class="act due-dot" href="{{ url_for('review') }}">Revisar {{ due_total }}</a>{% endif %}
+    <button class="act" type="button" data-rail-toggle aria-controls="rail" aria-expanded="false">Índice</button>
+  </div>
 </header>
 
 <div class="shell">
@@ -12,6 +15,13 @@
       <a class="wordmark" href="{{ url_for('dashboard') }}">StudyVault</a>
       <button class="act only-m" type="button" data-rail-toggle>Fechar</button>
     </div>
+
+    {% if due_total %}
+      <a class="due-link" href="{{ url_for('review') }}">
+        <span>Revisar hoje</span>
+        <span class="mono">{{ '%02d' % due_total }}</span>
+      </a>
+    {% endif %}
 
     <div class="rail-title">
       <span class="eyebrow">Índice</span>

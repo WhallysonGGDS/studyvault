@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% set total = done_today + remaining %}
+
+{% block title %}Revisão · {{ note.title }} — StudyVault{% endblock %}
+
+{% block body %}
+<div class="meter" role="progressbar" aria-label="Progresso da revisão de hoje"
+     aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ done_today }}">
+  <span style="transform: scaleX({{ (done_today / total) if total else 0 }})"></span>
+</div>
+
+<main class="focus">
+  <header class="focus-bar rise">
+    <a class="act back" href="{{ url_for('dashboard', topic_id=topic.id if topic else None) }}"><span class="arrow">←</span> Sair</a>
+    <span class="eyebrow">
+      <span>{{ topic.name if topic else 'Revisão de hoje' }}</span>
+      <span>{{ remaining }} {{ 'restante' if remaining == 1 else 'restantes' }}</span>
+    </span>
+  </header>
+
+  <section class="recall">
+    <div class="eyebrow rise" style="--i:1">
+      <span>{{ note.topic_name }}</span>
+      <span>{{ 'primeira revisão' if note.reps == 0 else (note.reps + 1) ~ 'ª revisão' }}</span>
+    </div>
+
+    <p class="recall-prompt rise" style="--i:2">O que você lembra sobre</p>
+    <h1 class="display rise" style="--i:3; view-transition-name: note-{{ note.id }}">{{ note.title }}</h1>
+
+    {% set tags = note.tags|taglist %}
+    {% if tags %}
+      <div class="tags rise" style="--i:4">
+        {% for tg in tags %}<span class="tag">{{ tg }}</span>{% endfor %}
+      </div>
+    {% endif %}
+
+    <details class="reveal" data-reveal>
+      <summary class="rise" style="--i:5">
+        <span class="cta">Revelar a nota <kbd>espaço</kbd> <span class="arrow">↓</span></span>
+        <span class="recall-hint">Tente lembrar antes de revelar. É o esforço de buscar que fixa a memória.</span>
+      </summary>
+
+      <div class="prose">
+        {% if rendered %}{{ rendered|safe }}{% else %}<p class="faint">Esta nota não tem conteúdo, só o título.</p>{% endif %}
+      </div>
+
+      {% if images %}
+        <div class="gallery">
+          {% for img in images %}
+            <figure><a href="{{ url_for('image_file', image_id=img.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('image_file', image_id=img.id) }}" alt="Anexo {{ loop.index }}" loading="lazy"></a></figure>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <form class="grades" method="post" action="{{ url_for('review_post', note_id=note.id, topic_id=topic.id if topic else None) }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <p class="grades-q">Como foi lembrar?</p>
+        <div class="grades-row">
+          {% for grade, label, when in grades %}
+            <button class="grade g{{ grade }}" type="submit" name="grade" value="{{ grade }}" data-key="{{ loop.index }}">
+              <span class="key">{{ loop.index }}</span>
+              <span class="label">{{ label }}</span>
+              <span class="when">volta {{ when if when == 'amanhã' else 'em ' ~ when }}</span>
+            </button>
+          {% endfor %}
+        </div>
+      </form>
+    </details>
+  </section>
+
+  <footer class="focus-foot">
+    <form method="post" action="{{ url_for('review_post', note_id=note.id, topic_id=topic.id if topic else None) }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="act" type="submit" name="action" value="postpone">Adiar para amanhã</button>
+    </form>
+    <a class="act" href="{{ url_for('note_view', note_id=note.id) }}">Abrir a nota</a>
+  </footer>
+</main>
+{% endblock %}

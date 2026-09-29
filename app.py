@@ -1,8 +1,9 @@
 import os
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
+from zoneinfo import ZoneInfo
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -15,6 +16,7 @@ import markdown as md
 import nh3
 
 import db as database
+import review as sr
 from storage import make_storage
 
 try:
@@ -159,25 +161,37 @@ def create_app():
         )
         return nh3.clean(html, attributes=MD_ATTRIBUTES)
 
+    def local_today() -> date:
+        """Data de hoje no fuso do usuário (cookie 'tz' definido pelo navegador)."""
+        try:
+            zone = ZoneInfo(request.cookies.get("tz") or "UTC")
+        except Exception:
+            zone = timezone.utc
+        return datetime.now(zone).date()
+
     def user_topics():
-        """Tópicos do usuário (com contagem), cacheados por request."""
+        """Tópicos do usuário (com contagem e revisões pendentes), cacheados por request."""
         if "topics" not in g:
             g.topics = g.db.execute(
                 """
                 SELECT t.id, t.name,
-                       (SELECT COUNT(*) FROM notes n WHERE n.topic_id = t.id) AS notes_count
+                       (SELECT COUNT(*) FROM notes n WHERE n.topic_id = t.id) AS notes_count,
+                       (SELECT COUNT(*) FROM notes n
+                        LEFT JOIN reviews r ON r.note_id = n.id
+                        WHERE n.topic_id = t.id AND (r.due IS NULL OR r.due <= ?)) AS due_count
                 FROM topics t
                 WHERE t.user_id = ?
                 ORDER BY t.created_at ASC
                 """,
-                (current_user_id(),)
+                (local_today().isoformat(), current_user_id())
             ).fetchall()
         return g.topics
 
     @app.context_processor
     def inject_nav():
         if "user_id" in session and "db" in g:
-            return {"nav_topics": user_topics()}
+            topics = user_topics()
+            return {"nav_topics": topics, "due_total": sum(t["due_count"] for t in topics)}
         return {}
 
     def require_owner(row_user_id: int):
@@ -456,6 +470,11 @@ def create_app():
             (topic_id, title, content, tags, utcnow(), None)
         ).fetchone()
         note_id = row["id"]
+        # Primeira revisão no dia seguinte: o espaçamento começa amanhã
+        g.db.execute(
+            "INSERT INTO reviews (note_id, due) VALUES (?, ?)",
+            (note_id, (local_today() + timedelta(days=1)).isoformat())
+        )
         g.db.commit()
 
         saved = save_images(note_id, request.files.getlist("images"))
@@ -469,7 +488,12 @@ def create_app():
     def note_view(note_id: int):
         note = get_owned_note(note_id)
         rendered = render_markdown(note["content"] or "")
-        return render_template("note_view.html", note=note, images=note_images(note_id), rendered=rendered)
+        state = g.db.execute("SELECT due FROM reviews WHERE note_id = ?", (note_id,)).fetchone()
+        next_review = sr.human_due(state["due"] if state else None, local_today())
+        return render_template(
+            "note_view.html", note=note, images=note_images(note_id),
+            rendered=rendered, next_review=next_review
+        )
 
     @app.get("/notes/<int:note_id>/edit")
     @login_required
@@ -515,6 +539,126 @@ def create_app():
         delete_image_files(images)
         flash("Nota excluída.", "success")
         return redirect(url_for("dashboard", topic_id=note["topic_id"]))
+
+    # ---------- Revisão espaçada ----------
+    def due_query(topic_id=None):
+        sql = """
+            SELECT n.id, n.title, n.content, n.tags, n.topic_id, t.name AS topic_name,
+                   r.due, COALESCE(r.interval_days, 0) AS interval_days,
+                   COALESCE(r.ease, ?) AS ease, COALESCE(r.reps, 0) AS reps
+            FROM notes n
+            JOIN topics t ON t.id = n.topic_id
+            LEFT JOIN reviews r ON r.note_id = n.id
+            WHERE t.user_id = ? AND (r.due IS NULL OR r.due <= ?)
+        """
+        params = [sr.DEFAULT_EASE, current_user_id(), local_today().isoformat()]
+        if topic_id:
+            sql += " AND n.topic_id = ?"
+            params.append(topic_id)
+        # Atrasadas primeiro, depois as que nunca foram revisadas
+        sql += " ORDER BY (r.due IS NULL), r.due, n.id"
+        return sql, params
+
+    @app.get("/review")
+    @login_required
+    def review():
+        topic_id = request.args.get("topic_id", type=int)
+        topic = get_owned_topic(topic_id) if topic_id else None
+        today = local_today()
+
+        sql, params = due_query(topic_id)
+        queue = g.db.execute(sql, params).fetchall()
+
+        done_today = g.db.execute(
+            "SELECT COUNT(*) AS c FROM review_log WHERE user_id = ? AND reviewed_on = ?",
+            (current_user_id(), today.isoformat())
+        ).fetchone()["c"]
+
+        if not queue:
+            days = [r["reviewed_on"] for r in g.db.execute(
+                "SELECT DISTINCT reviewed_on FROM review_log WHERE user_id = ? ORDER BY reviewed_on DESC LIMIT 400",
+                (current_user_id(),)
+            ).fetchall()]
+            upcoming = g.db.execute(
+                """
+                SELECT r.due, COUNT(*) AS c
+                FROM reviews r
+                JOIN notes n ON n.id = r.note_id
+                JOIN topics t ON t.id = n.topic_id
+                WHERE t.user_id = ? AND r.due > ?
+                GROUP BY r.due ORDER BY r.due LIMIT 1
+                """,
+                (current_user_id(), today.isoformat())
+            ).fetchone()
+            return render_template(
+                "review_done.html",
+                topic=topic,
+                done_today=done_today,
+                streak=sr.streak(days, today),
+                next_due=sr.human_due(upcoming["due"], today) if upcoming else None,
+                next_count=upcoming["c"] if upcoming else 0,
+            )
+
+        note = queue[0]
+        return render_template(
+            "review.html",
+            note=note,
+            topic=topic,
+            rendered=render_markdown(note["content"] or ""),
+            images=note_images(note["id"]),
+            remaining=len(queue),
+            done_today=done_today,
+            grades=[
+                (g_, label, sr.human_interval(days))
+                for (g_, label), days in zip(
+                    sr.GRADES,
+                    sr.previews(note["interval_days"], note["ease"], note["reps"]).values()
+                )
+            ],
+        )
+
+    @app.post("/review/<int:note_id>")
+    @login_required
+    def review_post(note_id: int):
+        get_owned_note(note_id)
+        topic_id = request.args.get("topic_id", type=int)
+        today = local_today()
+
+        state = g.db.execute(
+            "SELECT interval_days, ease, reps, lapses FROM reviews WHERE note_id = ?",
+            (note_id,)
+        ).fetchone()
+        interval, ease, reps, lapses = (
+            (state["interval_days"], state["ease"], state["reps"], state["lapses"])
+            if state else (0, sr.DEFAULT_EASE, 0, 0)
+        )
+
+        if request.form.get("action") == "postpone":
+            due = today + timedelta(days=1)
+        else:
+            grade = request.form.get("grade", type=int)
+            if grade not in (0, 1, 2):
+                abort(400)
+            interval, ease, reps = sr.schedule(grade, interval, ease, reps)
+            lapses += grade == 0
+            due = today + timedelta(days=interval)
+            g.db.execute(
+                "INSERT INTO review_log (user_id, note_id, grade, reviewed_on, created_at) VALUES (?, ?, ?, ?, ?)",
+                (current_user_id(), note_id, grade, today.isoformat(), utcnow())
+            )
+
+        g.db.execute(
+            """
+            INSERT INTO reviews (note_id, due, interval_days, ease, reps, lapses, last_reviewed_on)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (note_id) DO UPDATE SET
+                due = excluded.due, interval_days = excluded.interval_days, ease = excluded.ease,
+                reps = excluded.reps, lapses = excluded.lapses, last_reviewed_on = excluded.last_reviewed_on
+            """,
+            (note_id, due.isoformat(), interval, ease, reps, lapses, today.isoformat())
+        )
+        g.db.commit()
+        return redirect(url_for("review", topic_id=topic_id))
 
     # ---------- Images ----------
     @app.get("/images/<int:image_id>")

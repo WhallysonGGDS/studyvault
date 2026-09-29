@@ -109,6 +109,31 @@ SCHEMA = [
         created_at TEXT NOT NULL
     )
     """,
+    # Revisão espaçada: estado atual de cada nota (uma linha por nota)
+    f"""
+    CREATE TABLE IF NOT EXISTS reviews (
+        note_id {_FK} PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+        due TEXT NOT NULL,
+        interval_days INTEGER NOT NULL DEFAULT 0,
+        ease REAL NOT NULL DEFAULT 2.5,
+        reps INTEGER NOT NULL DEFAULT 0,
+        lapses INTEGER NOT NULL DEFAULT 0,
+        last_reviewed_on TEXT
+    )
+    """,
+    # Histórico de revisões: sobrevive à exclusão da nota (sequência de dias)
+    f"""
+    CREATE TABLE IF NOT EXISTS review_log (
+        id {_ID},
+        user_id {_FK} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        note_id {_FK} REFERENCES notes(id) ON DELETE SET NULL,
+        grade INTEGER NOT NULL,
+        reviewed_on TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_reviews_due ON reviews(due)",
+    "CREATE INDEX IF NOT EXISTS idx_review_log_user ON review_log(user_id, reviewed_on)",
     "CREATE INDEX IF NOT EXISTS idx_topics_user ON topics(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_notes_topic ON notes(topic_id)",
     "CREATE INDEX IF NOT EXISTS idx_images_note ON images(note_id)",

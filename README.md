@@ -4,6 +4,20 @@ Um cofre para o que você estuda. Tópicos, notas em **Markdown** com realce de 
 
 Feito com Flask. Roda com SQLite no seu computador e com Postgres + Supabase Storage em produção, tudo no plano gratuito.
 
+## Revisão espaçada
+
+Toda nota entra na revisão no dia seguinte ao que foi escrita. Na revisão, você vê só o título, tenta lembrar, revela a nota e responde:
+
+| Resposta | O que acontece |
+|---|---|
+| **Esqueci** | volta amanhã e a nota fica marcada como mais difícil |
+| **Com esforço** | o intervalo cresce devagar |
+| **Lembrei** | o intervalo cresce cada vez mais (3 dias, 7 dias, ~18 dias…) |
+
+O algoritmo é um SM-2 simplificado (`review.py`), o mesmo princípio do Anki. "Hoje" segue o fuso do navegador. Dá para revisar o cofre inteiro ou só um tópico, e o app mostra a sequência de dias seguidos.
+
+Atalhos na revisão: `espaço` revela, `1` `2` `3` respondem.
+
 ## Design
 
 - **Sensação:** um cofre silencioso. Quase preto azulado, uma única cor de destaque (azul-gelo) usada só para foco, seleção e progresso.
@@ -11,7 +25,7 @@ Feito com Flask. Roda com SQLite no seu computador e com Postgres + Supabase Sto
 - **Composição:** índice de tópicos como sumário de livro, notas em lista editorial e leitura em coluna de ~66 caracteres. Sem cards.
 - **Movimento:** o dial da entrada gira uma vez, como uma combinação sendo aberta. Os elementos entram em sequência, o título da nota faz transição entre a lista e a leitura (View Transitions) e uma linha de progresso acompanha a leitura. Tudo desliga com `prefers-reduced-motion`.
 - **Mobile:** o índice vira uma folha de tela cheia, e as linhas de nota se reorganizam em vez de encolher.
-- **Atalhos:** `/` busca, `Ctrl/⌘ S` guarda a nota, `Esc` fecha o índice.
+- **Atalhos:** `/` busca, `Ctrl/⌘ S` guarda a nota, `Esc` fecha o índice. Na revisão, `espaço` revela e `1` `2` `3` respondem.
 
 ## Rodar localmente
 

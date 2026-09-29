@@ -23,6 +23,7 @@
     <div class="eyebrow rise" style="--i:1">
       <span>{{ note.created_at|datefmt }}</span>
       <span>{{ note.content|reading_time }} min de leitura</span>
+      <span>revisão {{ next_review }}</span>
       {% if note.updated_at %}<span>editada em {{ note.updated_at|datefmt }}</span>{% endif %}
     </div>
     <h1 class="display rise" style="--i:2; view-transition-name: note-{{ note.id }}">{{ note.title }}</h1>

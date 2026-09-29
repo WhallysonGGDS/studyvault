@@ -4,6 +4,14 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
+  // Fuso do usuário: "hoje" na revisão é o hoje dele, não o do servidor
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && !document.cookie.includes("tz=" + encodeURIComponent(tz))) {
+      document.cookie = `tz=${encodeURIComponent(tz)}; path=/; max-age=31536000; samesite=lax`;
+    }
+  } catch (_) {}
+
   // Índice mobile: folha de tela cheia
   const rail = $("#rail");
   const setRail = (open) => {
@@ -69,6 +77,21 @@
       e.preventDefault();
       writer.requestSubmit();
       return;
+    }
+    // Revisão: espaço revela, 1-2-3 responde
+    const reveal = $("[data-reveal]");
+    if (reveal && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === " " && !reveal.open) {
+        e.preventDefault();
+        reveal.open = true;
+        return;
+      }
+      const grade = reveal.open && $(`.grade[data-key="${e.key}"]`, reveal);
+      if (grade) {
+        e.preventDefault();
+        grade.click();
+        return;
+      }
     }
     if (e.key === "/" && !typing) {
       const q = $("#q");

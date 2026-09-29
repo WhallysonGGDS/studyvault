@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Revisão — StudyVault{% endblock %}
+
+{% block body %}
+<main class="gate closing">
+  {% include "_dial.html" %}
+
+  <header class="gate-head rise">
+    <a class="wordmark" href="{{ url_for('dashboard') }}">StudyVault</a>
+  </header>
+
+  <section class="gate-statement">
+    {% if done_today %}
+      <div class="eyebrow rise" style="--i:1">
+        <span>Hoje</span>
+        <span>{{ done_today }} {{ 'nota revisada' if done_today == 1 else 'notas revisadas' }}</span>
+        {% if streak > 1 %}<span>{{ streak }} dias seguidos</span>{% endif %}
+      </div>
+      <h1 class="display rise" style="--i:2">Revisão <em>concluída.</em></h1>
+      <p class="rise" style="--i:4">
+        O que você lembrou hoje ficou mais firme.
+        {% if next_due %}A próxima revisão volta {{ next_due }}, com {{ next_count }} {{ 'nota' if next_count == 1 else 'notas' }}.{% endif %}
+      </p>
+    {% else %}
+      <div class="eyebrow rise" style="--i:1">
+        <span>{{ topic.name if topic else 'Revisão' }}</span>
+        {% if streak > 1 %}<span>{{ streak }} dias seguidos</span>{% endif %}
+      </div>
+      <h1 class="display rise" style="--i:2">Nada para revisar <em>hoje.</em></h1>
+      <p class="rise" style="--i:4">
+        {% if next_due %}
+          Suas notas estão frescas. A próxima revisão volta {{ next_due }}, com {{ next_count }} {{ 'nota' if next_count == 1 else 'notas' }}.
+        {% else %}
+          Toda nota que você escreve entra na revisão no dia seguinte. Escreva a primeira e volte amanhã.
+        {% endif %}
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="gate-form rise" style="--i:6">
+    <a class="cta" href="{{ url_for('dashboard', topic_id=topic.id if topic else None) }}">
+      {{ 'Voltar para ' ~ topic.name if topic else 'Voltar ao cofre' }} <span class="arrow">→</span>
+    </a>
+  </section>
+
+  <footer class="gate-foot rise" style="--i:8">
+    <span class="eyebrow"><span>Revisão espaçada</span></span>
+    <span class="eyebrow"><span>Esqueci · amanhã</span><span>Lembrei · cada vez mais longe</span></span>
+  </footer>
+</main>
+{% endblock %}

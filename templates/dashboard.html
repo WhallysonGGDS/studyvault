@@ -29,6 +29,10 @@
     <h1 class="display rise" style="--i:2">{{ topic_selected.name }}</h1>
     <div class="hero-actions rise" style="--i:3">
       <a class="cta" href="{{ url_for('note_new', topic_id=topic_selected.id) }}">Escrever uma nota <span class="arrow">→</span></a>
+      {% set due_here = (topics|selectattr('id', 'equalto', topic_selected.id)|first).due_count %}
+      {% if due_here %}
+        <a class="act" href="{{ url_for('review', topic_id=topic_selected.id) }}">Revisar este tópico · {{ '%02d' % due_here }} <span class="arrow">→</span></a>
+      {% endif %}
     </div>
   </header>
 
@@ -88,6 +92,12 @@
 
   <header class="hero">
     <h1 class="display rise" style="--i:1">O que você quer <em>relembrar?</em></h1>
+    {% if due_total %}
+      <div class="hero-actions rise" style="--i:2">
+        <a class="cta" href="{{ url_for('review') }}">Revisar {{ due_total }} {{ 'nota' if due_total == 1 else 'notas' }} de hoje <span class="arrow">→</span></a>
+        <span class="mono faint">cerca de {{ [1, (due_total * 1.5)|round|int]|max }} min</span>
+      </div>
+    {% endif %}
   </header>
 
   <form class="search rise" style="--i:2" method="get" action="{{ url_for('dashboard') }}" role="search">
